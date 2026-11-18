@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador AFP: Comisión por Flujo vs. Comisión por Saldo</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --card-border: #334155;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #10b981;
+    --primary-glow: rgba(16, 185, 129, 0.2);
+    --secondary: #3b82f6;
+    --secondary-glow: rgba(59, 130, 246, 0.2);
+    --accent: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    padding: 24px;
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .container {
+    width: 100%;
+    max-width: 1120px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  header {
+    text-align: center;
+    padding: 10px 0;
+  }
+  header h1 {
+    font-size: 1.85rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #34d399, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p {
+    color: var(--text-muted);
+    font-size: 0.98rem;
+    margin-top: 6px;
+  }
+  .afp-selector {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .afp-btn {
+    background: var(--card);
+    border: 2px solid var(--card-border);
+    border-radius: 12px;
+    padding: 14px 12px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+  }
+  .afp-btn:hover {
+    border-color: #64748b;
+    transform: translateY(-2px);
+  }
+  .afp-btn.active {
+    border-color: var(--primary);
+    background: linear-gradient(180deg, rgba(16, 185, 129, 0.15) 0%, var(--card) 100%);
+    box-shadow: 0 0 20px var(--primary-glow);
+  }
+  .afp-btn .name {
+    font-size: 1.15rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .afp-btn .rates {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    display: block;
+  }
+  .afp-btn.active .rates {
+    color: #a7f3d0;
+  }
+  .main-grid {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 880px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .afp-selector { grid-template-columns: repeat(2, 1fr); }
+  }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .control-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .control-header label {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #cbd5e1;
+  }
+  .control-value {
+    background: #0f172a;
+    border: 1px solid #334155;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #34d399;
+    min-width: 88px;
+    text-align: right;
+  }
+  .age-quick-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  .quick-btn {
+    flex: 1;
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+    padding: 6px 8px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  .quick-btn:hover {
+    border-color: var(--primary);
+    color: #fff;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 5px;
+    background: #0f172a;
+    outline: none;
+    cursor: pointer;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 0 8px rgba(0,0,0,0.4);
+  }
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+  }
+  @media (max-width: 600px) {
+    .kpis { grid-template-columns: 1fr; }
+  }
+  .kpi-card {
+    background: #0f172a;
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .kpi-card.flujo { border-left: 4px solid var(--primary); }
+  .kpi-card.saldo { border-left: 4px solid var(--secondary); }
+  .kpi-card.diff { border-left: 4px solid var(--accent); }
+  .kpi-title {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .kpi-amount {
+    font-size: 1.55rem;
+    font-weight: 800;
+    margin-top: 6px;
+  }
+  .kpi-card.flujo .kpi-amount { color: #34d399; }
+  .kpi-card.saldo .kpi-amount { color: #60a5fa; }
+  .kpi-card.diff .kpi-amount { color: #fbbf24; }
+  .kpi-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 360px;
+    background: #0f172a;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--card-border);
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    margin-top: 8px;
+    font-size: 0.92rem;
+    font-weight: 600;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+  }
+  .footer-note {
+    text-align: center;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Simulador AFP: Comisión por Flujo vs. Comisión por Saldo</h1>
+    <p>Selecciona tu AFP y mueve tu edad para proyectar tu fondo acumulado hasta los 65 años</p>
+  </header>
+
+  <!-- Selector de las 4 AFP -->
+  <div class="afp-selector" id="afpSelector">
+    <button class="afp-btn" data-afp="profuturo">
+      <span class="name">AFP Profuturo</span>
+      <span class="rates">Saldo: 0.68% | Flujo: 1.69%</span>
+    </button>
+    <button class="afp-btn active" data-afp="integra">
+      <span class="name">AFP Integra</span>
+      <span class="rates">Saldo: 0.78% | Flujo: 1.55%</span>
+    </button>
+    <button class="afp-btn" data-afp="prima">
+      <span class="name">AFP Prima</span>
+      <span class="rates">Saldo: 1.25% | Flujo: 1.60%</span>
+    </button>
+    <button class="afp-btn" data-afp="habitat">
+      <span class="name">AFP Habitat</span>
+      <span class="rates">Saldo: 1.25% | Flujo: 1.47%</span>
+    </button>
+  </div>
+
+  <div class="main-grid">
+    <!-- Panel de Controles -->
+    <div class="panel">
+      <div class="control-group">
+        <div class="control-header">
+          <label for="ageInput">Tu edad actual</label>
+          <span class="control-value" id="ageVal">45 años</span>
+        </div>
+        <input type="range" id="ageInput" min="18" max="60" step="1" value="45">
+        <div class="age-quick-btns">
+          <button class="quick-btn" onclick="setAge(30)">Ejemplo: 30 años</button>
+          <button class="quick-btn" onclick="setAge(45)">Ejemplo: 45 años</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label for="initialInput">Fondo acumulado hoy</label>
+          <span class="control-value" id="initialVal">S/ 30,000</span>
+        </div>
+        <input type="range" id="initialInput" min="0" max="150000" step="5000" value="30000">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label for="salaryInput">Sueldo mensual bruto</label>
+          <span class="control-value" id="salaryVal">S/ 2,400</span>
+        </div>
+        <input type="range" id="salaryInput" min="1130" max="10000" step="100" value="2400">
+      </div>
+
+      <div class="control-group">
+        <div class="control-header">
+          <label for="rateInput">Rentabilidad anual</label>
+          <span class="control-value" id="rateVal">6.0%</span>
+        </div>
+        <input type="range" id="rateInput" min="2" max="12" step="0.5" value="6">
+      </div>
+    </div>
+
+    <!-- Panel de Resultados y Curva -->
+    <div class="panel">
+      <div class="kpis">
+        <div class="kpi-card flujo">
+          <div class="kpi-title">Saldo Final (Flujo)</div>
+          <div class="kpi-amount" id="kpiFlujo">S/ 0</div>
+          <div class="kpi-sub" id="subFlujo">Comisión pagada: S/ 0</div>
+        </div>
+        <div class="kpi-card saldo">
+          <div class="kpi-title">Saldo Final (Saldo)</div>
+          <div class="kpi-amount" id="kpiSaldo">S/ 0</div>
+          <div class="kpi-sub" id="subSaldo">Comisión pagada: S/ 0</div>
+        </div>
+        <div class="kpi-card diff">
+          <div class="kpi-title">Diferencia a los 65 años</div>
+          <div class="kpi-amount" id="kpiDiff">S/ 0</div>
+          <div class="kpi-sub" id="subDiff">A favor de Comisión por Flujo</div>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <canvas id="afpChart"></canvas>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item">
+          <span class="dot" style="background:#10b981;"></span>
+          <span>Saldo acumulado en Comisión por Flujo</span>
+        </div>
+        <div class="legend-item">
+          <span class="dot" style="background:#3b82f6;"></span>
+          <span>Saldo acumulado en Comisión por Saldo</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="footer-note">
+    *Proyección mensual capitalizada hasta los 65 años asumiendo aporte obligatorio del 10% del sueldo bruto. Tasas SBS vigentes (2026).
+  </p>
+</div>
+
+<script>
+  const AFP_RATES = {
+    profuturo: { name: 'Profuturo', flujo: 0.0169, saldo: 0.0068 },
+    integra:   { name: 'Integra',   flujo: 0.0155, saldo: 0.0078 },
+    prima:     { name: 'Prima',     flujo: 0.0160, saldo: 0.0125 },
+    habitat:   { name: 'Habitat',   flujo: 0.0147, saldo: 0.0125 }
+  };
+
+  let currentAfp = 'integra';
+
+  const ageInput = document.getElementById('ageInput');
+  const initialInput = document.getElementById('initialInput');
+  const salaryInput = document.getElementById('salaryInput');
+  const rateInput = document.getElementById('rateInput');
+
+  const ageVal = document.getElementById('ageVal');
+  const initialVal = document.getElementById('initialVal');
+  const salaryVal = document.getElementById('salaryVal');
+  const rateVal = document.getElementById('rateVal');
+
+  const kpiFlujo = document.getElementById('kpiFlujo');
+  const kpiSaldo = document.getElementById('kpiSaldo');
+  const kpiDiff = document.getElementById('kpiDiff');
+  const subFlujo = document.getElementById('subFlujo');
+  const subSaldo = document.getElementById('subSaldo');
+  const subDiff = document.getElementById('subDiff');
+
+  const canvas = document.getElementById('afpChart');
+  const ctx = canvas.getContext('2d');
+
+  function formatPEN(num) {
+    return 'S/ ' + Math.round(num).toLocaleString('en-US');
+  }
+
+  function setAge(age) {
+    ageInput.value = age;
+    update();
+  }
+
+  document.querySelectorAll('.afp-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.afp-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentAfp = btn.dataset.afp;
+      update();
+    });
+  });
+
+  [ageInput, initialInput, salaryInput, rateInput].forEach(el => {
+    el.addEventListener('input', update);
+  });
+
+  function calculateProjection() {
+    const age = parseInt(ageInput.value);
+    const initial = parseFloat(initialInput.value);
+    const salary = parseFloat(salaryInput.value);
+    const annualRate = parseFloat(rateInput.value) / 100;
+
+    const years = 65 - age;
+    const months = years * 12;
+    const monthlyContrib = salary * 0.10;
+    const afp = AFP_RATES[currentAfp];
+
+    const monthlyRateFlujo = Math.pow(1 + annualRate, 1/12) - 1;
+    const netAnnualSaldo = annualRate - afp.saldo;
+    const monthlyRateSaldo = Math.pow(1 + netAnnualSaldo, 1/12) - 1;
+    const monthlyFeeSaldoRate = afp.saldo / 12;
+
+    let fFlujo = initial;
+    let fSaldo = initial;
+    let paidFlujo = 0;
+    let paidSaldo = 0;
+
+    const pointsFlujo = [{ age: age, val: fFlujo }];
+    const pointsSaldo = [{ age: age, val: fSaldo }];
+
+    for (let m = 1; m <= months; m++) {
+      // Comisión por Flujo: el fondo crece íntegro, comisión se paga aparte en boleta
+      fFlujo = (fFlujo + monthlyContrib) * (1 + monthlyRateFlujo);
+      paidFlujo += salary * afp.flujo;
+
+      // Comisión por Saldo: se descuenta del fondo acumulado
+      const grossSaldo = (fSaldo + monthlyContrib) * (1 + monthlyRateFlujo);
+      const feeThisMonth = grossSaldo * monthlyFeeSaldoRate;
+      paidSaldo += feeThisMonth;
+      fSaldo = grossSaldo - feeThisMonth;
+
+      if (m % 12 === 0) {
+        pointsFlujo.push({ age: age + (m / 12), val: fFlujo });
+        pointsSaldo.push({ age: age + (m / 12), val: fSaldo });
+      }
+    }
+
+    return {
+      age, years,
+      finalFlujo: fFlujo,
+      finalSaldo: fSaldo,
+      paidFlujo,
+      paidSaldo,
+      pointsFlujo,
+      pointsSaldo
+    };
+  }
+
+  function drawChart(data) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.parentElement.getBoundingClientRect();
+    canvas.width = (rect.width - 32) * dpr;
+    canvas.height = (rect.height - 32) * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width - 32;
+    const h = rect.height - 32;
+    ctx.clearRect(0, 0, w, h);
+
+    const padLeft = 78;
+    const padRight = 24;
+    const padTop = 20;
+    const padBottom = 38;
+    const plotW = w - padLeft - padRight;
+    const plotH = h - padTop - padBottom;
+
+    const maxVal = Math.max(data.finalFlujo, data.finalSaldo, 50000) * 1.08;
+    const minAge = data.age;
+    const maxAge = 65;
+
+    function getX(age) {
+      return padLeft + ((age - minAge) / (maxAge - minAge)) * plotW;
+    }
+    function getY(val) {
+      return padTop + plotH - (val / maxVal) * plotH;
+    }
+
+    // Grid horizontal y etiquetas Y
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    const gridLines = 5;
+    for (let i = 0; i <= gridLines; i++) {
+      const val = (maxVal / gridLines) * i;
+      const y = getY(val);
+      ctx.beginPath();
+      ctx.moveTo(padLeft, y);
+      ctx.lineTo(w - padRight, y);
+      ctx.stroke();
+
+      const label = val >= 1000000
+        ? 'S/ ' + (val / 1000000).toFixed(2) + 'M'
+        : 'S/ ' + Math.round(val / 1000) + 'k';
+      ctx.fillText(label, padLeft - 10, y);
+    }
+
+    // Etiquetas Eje X (Edades)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const stepAge = data.years > 25 ? 5 : (data.years > 12 ? 3 : 1);
+    for (let a = minAge; a <= maxAge; a += stepAge) {
+      const x = getX(a);
+      ctx.fillText(a + ' años', x, padTop + plotH + 12);
+    }
+    if ((maxAge - minAge) % stepAge !== 0) {
+      ctx.fillText('65 años', getX(65), padTop + plotH + 12);
+    }
+
+    // Área sombreada bajo Flujo
+    ctx.beginPath();
+    data.pointsFlujo.forEach((pt, idx) => {
+      const x = getX(pt.age);
+      const y = getY(pt.val);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.lineTo(getX(65), getY(0));
+    ctx.lineTo(getX(minAge), getY(0));
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, padTop, 0, padTop + plotH);
+    grad.addColorStop(0, 'rgba(16, 185, 129, 0.25)');
+    grad.addColorStop(1, 'rgba(16, 185, 129, 0.0)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Curva Flujo
+    ctx.beginPath();
+    ctx.strokeStyle = '#10b981';
+    ctx.lineWidth = 3.5;
+    data.pointsFlujo.forEach((pt, idx) => {
+      const x = getX(pt.age);
+      const y = getY(pt.val);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Curva Saldo
+    ctx.beginPath();
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 3.5;
+    data.pointsSaldo.forEach((pt, idx) => {
+      const x = getX(pt.age);
+      const y = getY(pt.val);
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Puntos finales a los 65 años
+    const endX = getX(65);
+    const endYFlujo = getY(data.finalFlujo);
+    const endYSaldo = getY(data.finalSaldo);
+
+    ctx.fillStyle = '#10b981';
+    ctx.beginPath();
+    ctx.arc(endX, endYFlujo, 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.arc(endX, endYSaldo, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function update() {
+    ageVal.textContent = ageInput.value + ' años';
+    initialVal.textContent = formatPEN(initialInput.value);
+    salaryVal.textContent = formatPEN(salaryInput.value);
+    rateVal.textContent = parseFloat(rateInput.value).toFixed(1) + '%';
+
+    const data = calculateProjection();
+
+    kpiFlujo.textContent = formatPEN(data.finalFlujo);
+    subFlujo.textContent = 'Comisión total pagada: ' + formatPEN(data.paidFlujo);
+
+    kpiSaldo.textContent = formatPEN(data.finalSaldo);
+    subSaldo.textContent = 'Comisión total pagada: ' + formatPEN(data.paidSaldo);
+
+    const diff = data.finalFlujo - data.finalSaldo;
+    kpiDiff.textContent = (diff >= 0 ? '+ ' : '- ') + formatPEN(Math.abs(diff));
+    subDiff.textContent = diff >= 0
+      ? 'Más dinero acumulado en Comisión por Flujo'
+      : 'Más dinero acumulado en Comisión por Saldo';
+
+    drawChart(data);
+  }
+
+  window.addEventListener('resize', update);
+  update();
+</script>
+</body>
+</html>

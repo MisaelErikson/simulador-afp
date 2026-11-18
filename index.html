@@ -494,7 +494,6 @@
     const monthlyRateFlujo = Math.pow(1 + annualRate, 1/12) - 1;
     const monthlyFeeSaldoRate = afp.saldo / 12;
 
-    // Índice de mes exacto en que inicia la interrupción laboral (1-indexed)
     const pauseStartMonth = (stopAge - age) * 12 + 1;
     const pauseEndMonth = pauseStartMonth + totalUnemployedMonths - 1;
 
@@ -511,15 +510,19 @@
       const isWorking = !isPaused;
       const currentContrib = isWorking ? monthlyContrib : 0;
 
-      // Comisión por Flujo: si no trabaja, aporta 0 y comisión de flujo es 0
+      // --- COMISIÓN POR FLUJO ---
+      // Se descuenta el porcentaje sobre el sueldo de cada nuevo ingreso mensual de forma directa
       fFlujo = (fFlujo + currentContrib) * (1 + monthlyRateFlujo);
       if (isWorking) {
         paidFlujo += salary * afp.flujo;
       }
 
-      // Comisión por Saldo: aunque no trabaje, la AFP sigue cobrando sobre el saldo acumulado
-      const grossSaldo = (fSaldo + currentContrib) * (1 + monthlyRateFlujo);
-      const feeThisMonth = grossSaldo * monthlyFeeSaldoRate;
+      // --- COMISIÓN POR SALDO ---
+      // Los nuevos ingresos (aportes) se suman al fondo acumulado (saldo anterior + nuevo aporte),
+      // sobre el cual se aplica la rentabilidad y luego se retira la comisión por saldo correspondiente.
+      let grossSaldo = (fSaldo + currentContrib) * (1 + monthlyRateFlujo);
+      let feeThisMonth = grossSaldo * monthlyFeeSaldoRate;
+      
       paidSaldo += feeThisMonth;
       fSaldo = grossSaldo - feeThisMonth;
 
@@ -569,7 +572,6 @@
       return padTop + plotH - (val / maxVal) * plotH;
     }
 
-    // Franja visual del periodo de interrupción laboral
     if (data.totalUnemployedMonths > 0) {
       const startPauseAge = data.stopAge;
       const endPauseAge = Math.min(data.stopAge + (data.totalUnemployedMonths / 12), 65);
@@ -588,7 +590,6 @@
       ctx.setLineDash([]);
     }
 
-    // Grid horizontal y etiquetas Y
     ctx.strokeStyle = '#1e293b';
     ctx.lineWidth = 1;
     ctx.fillStyle = '#94a3b8';
@@ -611,7 +612,6 @@
       ctx.fillText(label, padLeft - 10, y);
     }
 
-    // Etiquetas Eje X (Edades)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const stepAge = data.years > 25 ? 5 : (data.years > 12 ? 3 : 1);
@@ -623,7 +623,6 @@
       ctx.fillText('65 años', getX(65), padTop + plotH + 12);
     }
 
-    // Área sombreada bajo Flujo
     ctx.beginPath();
     data.pointsFlujo.forEach((pt, idx) => {
       const x = getX(pt.age);
@@ -640,7 +639,6 @@
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // Curva Flujo
     ctx.beginPath();
     ctx.strokeStyle = '#10b981';
     ctx.lineWidth = 3.5;
@@ -652,7 +650,6 @@
     });
     ctx.stroke();
 
-    // Curva Saldo
     ctx.beginPath();
     ctx.strokeStyle = '#3b82f6';
     ctx.lineWidth = 3.5;
@@ -664,7 +661,6 @@
     });
     ctx.stroke();
 
-    // Puntos finales a los 65 años
     const endX = getX(65);
     const endYFlujo = getY(data.finalFlujo);
     const endYSaldo = getY(data.finalSaldo);

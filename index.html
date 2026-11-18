@@ -104,7 +104,7 @@
     padding: 22px;
     display: flex;
     flex-direction: column;
-    gap: 20px;
+    gap: 18px;
   }
   .control-group {
     display: flex;
@@ -132,6 +132,9 @@
     min-width: 88px;
     text-align: right;
   }
+  .control-value.warn {
+    color: #fbbf24;
+  }
   .age-quick-btns {
     display: flex;
     gap: 8px;
@@ -153,6 +156,15 @@
     border-color: var(--primary);
     color: #fff;
   }
+  .sub-control-box {
+    background: rgba(15, 23, 42, 0.55);
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
   input[type="range"] {
     -webkit-appearance: none;
     width: 100%;
@@ -171,6 +183,9 @@
     cursor: pointer;
     border: 2px solid #fff;
     box-shadow: 0 0 8px rgba(0,0,0,0.4);
+  }
+  input[type="range"].warn-slider::-webkit-slider-thumb {
+    background: var(--accent);
   }
   .kpis {
     display: grid;
@@ -226,9 +241,10 @@
   .legend {
     display: flex;
     justify-content: center;
-    gap: 28px;
+    flex-wrap: wrap;
+    gap: 24px;
     margin-top: 8px;
-    font-size: 0.92rem;
+    font-size: 0.9rem;
     font-weight: 600;
   }
   .legend-item {
@@ -313,6 +329,30 @@
         </div>
         <input type="range" id="rateInput" min="2" max="12" step="0.5" value="6">
       </div>
+
+      <!-- Control de Interrupción Laboral con Edad Exacta de Inicio -->
+      <div class="sub-control-box">
+        <div class="control-group">
+          <div class="control-header">
+            <label for="unemployedInput">Meses sin trabajar (interrupción)</label>
+            <span class="control-value warn" id="unemployedVal">0 meses</span>
+          </div>
+          <input type="range" class="warn-slider" id="unemployedInput" min="0" max="24" step="1" value="0">
+          <div class="age-quick-btns">
+            <button class="quick-btn" onclick="setUnemployed(0)">0 meses</button>
+            <button class="quick-btn" onclick="setUnemployed(12)">1 año</button>
+            <button class="quick-btn" onclick="setUnemployed(24)">2 años</button>
+          </div>
+        </div>
+
+        <div class="control-group" id="stopAgeGroup">
+          <div class="control-header">
+            <label for="stopAgeInput">Edad en que dejó de trabajar</label>
+            <span class="control-value warn" id="stopAgeVal">50 años</span>
+          </div>
+          <input type="range" class="warn-slider" id="stopAgeInput" min="45" max="64" step="1" value="50">
+        </div>
+      </div>
     </div>
 
     <!-- Panel de Resultados y Curva -->
@@ -348,6 +388,10 @@
           <span class="dot" style="background:#3b82f6;"></span>
           <span>Saldo acumulado en Comisión por Saldo</span>
         </div>
+        <div class="legend-item" id="pauseLegend" style="display:none;">
+          <span class="dot" style="background:rgba(245, 158, 11, 0.45); border: 1px solid #f59e0b;"></span>
+          <span>Periodo sin trabajar</span>
+        </div>
       </div>
     </div>
   </div>
@@ -371,11 +415,16 @@
   const initialInput = document.getElementById('initialInput');
   const salaryInput = document.getElementById('salaryInput');
   const rateInput = document.getElementById('rateInput');
+  const unemployedInput = document.getElementById('unemployedInput');
+  const stopAgeInput = document.getElementById('stopAgeInput');
 
   const ageVal = document.getElementById('ageVal');
   const initialVal = document.getElementById('initialVal');
   const salaryVal = document.getElementById('salaryVal');
   const rateVal = document.getElementById('rateVal');
+  const unemployedVal = document.getElementById('unemployedVal');
+  const stopAgeVal = document.getElementById('stopAgeVal');
+  const pauseLegend = document.getElementById('pauseLegend');
 
   const kpiFlujo = document.getElementById('kpiFlujo');
   const kpiSaldo = document.getElementById('kpiSaldo');
@@ -391,8 +440,23 @@
     return 'S/ ' + Math.round(num).toLocaleString('en-US');
   }
 
+  function syncStopAgeBounds() {
+    const currentAge = parseInt(ageInput.value);
+    stopAgeInput.min = currentAge;
+    stopAgeInput.max = 64;
+    if (parseInt(stopAgeInput.value) < currentAge) {
+      stopAgeInput.value = Math.min(currentAge + 5, 64);
+    }
+  }
+
   function setAge(age) {
     ageInput.value = age;
+    syncStopAgeBounds();
+    update();
+  }
+
+  function setUnemployed(months) {
+    unemployedInput.value = months;
     update();
   }
 
@@ -405,7 +469,12 @@
     });
   });
 
-  [ageInput, initialInput, salaryInput, rateInput].forEach(el => {
+  ageInput.addEventListener('input', () => {
+    syncStopAgeBounds();
+    update();
+  });
+
+  [initialInput, salaryInput, rateInput, unemployedInput, stopAgeInput].forEach(el => {
     el.addEventListener('input', update);
   });
 
@@ -414,6 +483,8 @@
     const initial = parseFloat(initialInput.value);
     const salary = parseFloat(salaryInput.value);
     const annualRate = parseFloat(rateInput.value) / 100;
+    const totalUnemployedMonths = parseInt(unemployedInput.value);
+    const stopAge = parseInt(stopAgeInput.value);
 
     const years = 65 - age;
     const months = years * 12;
@@ -421,9 +492,11 @@
     const afp = AFP_RATES[currentAfp];
 
     const monthlyRateFlujo = Math.pow(1 + annualRate, 1/12) - 1;
-    const netAnnualSaldo = annualRate - afp.saldo;
-    const monthlyRateSaldo = Math.pow(1 + netAnnualSaldo, 1/12) - 1;
     const monthlyFeeSaldoRate = afp.saldo / 12;
+
+    // Índice de mes exacto en que inicia la interrupción laboral (1-indexed)
+    const pauseStartMonth = (stopAge - age) * 12 + 1;
+    const pauseEndMonth = pauseStartMonth + totalUnemployedMonths - 1;
 
     let fFlujo = initial;
     let fSaldo = initial;
@@ -434,12 +507,18 @@
     const pointsSaldo = [{ age: age, val: fSaldo }];
 
     for (let m = 1; m <= months; m++) {
-      // Comisión por Flujo: el fondo crece íntegro, comisión se paga aparte en boleta
-      fFlujo = (fFlujo + monthlyContrib) * (1 + monthlyRateFlujo);
-      paidFlujo += salary * afp.flujo;
+      const isPaused = totalUnemployedMonths > 0 && m >= pauseStartMonth && m <= pauseEndMonth;
+      const isWorking = !isPaused;
+      const currentContrib = isWorking ? monthlyContrib : 0;
 
-      // Comisión por Saldo: se descuenta del fondo acumulado
-      const grossSaldo = (fSaldo + monthlyContrib) * (1 + monthlyRateFlujo);
+      // Comisión por Flujo: si no trabaja, aporta 0 y comisión de flujo es 0
+      fFlujo = (fFlujo + currentContrib) * (1 + monthlyRateFlujo);
+      if (isWorking) {
+        paidFlujo += salary * afp.flujo;
+      }
+
+      // Comisión por Saldo: aunque no trabaje, la AFP sigue cobrando sobre el saldo acumulado
+      const grossSaldo = (fSaldo + currentContrib) * (1 + monthlyRateFlujo);
       const feeThisMonth = grossSaldo * monthlyFeeSaldoRate;
       paidSaldo += feeThisMonth;
       fSaldo = grossSaldo - feeThisMonth;
@@ -451,7 +530,7 @@
     }
 
     return {
-      age, years,
+      age, years, stopAge, totalUnemployedMonths,
       finalFlujo: fFlujo,
       finalSaldo: fSaldo,
       paidFlujo,
@@ -488,6 +567,25 @@
     }
     function getY(val) {
       return padTop + plotH - (val / maxVal) * plotH;
+    }
+
+    // Franja visual del periodo de interrupción laboral
+    if (data.totalUnemployedMonths > 0) {
+      const startPauseAge = data.stopAge;
+      const endPauseAge = Math.min(data.stopAge + (data.totalUnemployedMonths / 12), 65);
+      const x1 = getX(startPauseAge);
+      const x2 = Math.max(getX(endPauseAge), x1 + 4);
+
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+      ctx.fillRect(x1, padTop, x2 - x1, plotH);
+
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(x1, padTop);
+      ctx.lineTo(x1, padTop + plotH);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     // Grid horizontal y etiquetas Y
@@ -587,6 +685,10 @@
     initialVal.textContent = formatPEN(initialInput.value);
     salaryVal.textContent = formatPEN(salaryInput.value);
     rateVal.textContent = parseFloat(rateInput.value).toFixed(1) + '%';
+    unemployedVal.textContent = unemployedInput.value + ' meses';
+    stopAgeVal.textContent = stopAgeInput.value + ' años';
+
+    pauseLegend.style.display = parseInt(unemployedInput.value) > 0 ? 'flex' : 'none';
 
     const data = calculateProjection();
 
@@ -605,6 +707,7 @@
     drawChart(data);
   }
 
+  syncStopAgeBounds();
   window.addEventListener('resize', update);
   update();
 </script>
